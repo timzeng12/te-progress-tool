@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TE 未完成時數統計工具</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    body { font-family: "Segoe UI", "Microsoft JhengHei", sans-serif; }
+    .drop-zone { border: 2px dashed #cbd5e1; transition: all .2s ease; }
+    .drop-zone.dragover { border-color: #0284c7; background-color: #f0f9ff; }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen p-6">
+  <div class="max-w-4xl mx-auto bg-white p-8 rounded-2xl shadow-xl">
+    <h1 class="text-2xl font-bold text-slate-800 mb-2 text-center">TestVault TE 未完成時數統計工具</h1>
+    <p class="text-slate-500 mb-8 text-center text-sm">統計未完成項目的 Planned Setup Time + Planned Attended Time，並換算成小時。</p>
+
+    <div id="dropZone" class="drop-zone rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer bg-slate-50 hover:bg-slate-100 mb-6">
+      <p id="fileNameDisplay" class="text-slate-700 font-semibold text-center text-sm">點選或拖曳 TestVault 報表到這裡</p>
+      <p class="text-xs text-slate-400 mt-1">支援 .xlsx / .csv</p>
+      <input type="file" id="fileInput" class="hidden" accept=".csv,.xlsx">
+    </div>
+
+    <div id="filterSection" class="hidden bg-slate-50 border border-slate-200 p-5 rounded-xl mb-6">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="text-sm font-bold text-slate-700">貼上要顯示的 TE 名單</h3>
+        <button id="applyBtn" class="text-sky-700 hover:text-sky-800 font-bold text-xs">Apply / Save</button>
+      </div>
+      <textarea id="teListInput" class="w-full min-h-32 border border-slate-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-4 focus:ring-sky-100 focus:border-sky-600" placeholder="可貼上多個 TE，例如：
+Aden
+Samuel_Kuo@compal.com
+Wendy_Zeng"></textarea>
+      <p class="text-[11px] text-amber-600 font-medium mt-2">可用換行、逗號、分號分隔；可貼完整 email 或姓名片段。空白代表顯示全部 TE。</p>
+    </div>
+
+    <div id="resultSection" class="hidden">
+      <div class="flex flex-col sm:flex-row gap-4 justify-between items-center bg-sky-50 border border-sky-200 p-4 rounded-xl mb-6">
+        <div>
+          <span class="text-sky-900 font-bold text-base" id="summaryText">尚未產生資料</span>
+          <p class="text-xs text-sky-600 mt-0.5">未完成判定：Result 包含 In-Progress / Blocked / Incomplete，或 Blocked Steps / Incomplete Steps 大於 0。</p>
+        </div>
+        <button id="downloadBtn" class="w-full sm:w-auto bg-sky-700 hover:bg-sky-800 text-white font-semibold px-5 py-2.5 rounded-lg shadow transition text-xs">下載結果 .xlsx</button>
+      </div>
+
+      <div class="overflow-x-auto border border-slate-200 rounded-xl">
+        <table class="w-full text-left border-collapse text-sm">
+          <thead>
+            <tr class="bg-slate-800 text-white">
+              <th class="p-3 text-center">TE</th>
+              <th class="p-3 text-center">未完成 Case 數</th>
+              <th class="p-3 text-right">未完成時數</th>
+            </tr>
+          </thead>
+          <tbody id="previewTableBody" class="text-slate-600 divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const dropZone = document.getElementById("dropZone");
+    const fileInput = document.getElementById("fileInput");
+    const fileNameDisplay = document.getElementById("fileNameDisplay");
+    const filterSection = document.getElementById("filterSection");
+    const resultSection = document.getElementById("resultSection");
+    const summaryText = document.getElementById("summaryText");
+    const previewTableBody = document.getElementById("previewTableBody");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const applyBtn = document.getElementById("applyBtn");
+    const teListInput = document.getElementById("teListInput");
+    const STORAGE_KEY = "testvault_uncompleted_te_list_text_v1";
+
+    let allUncompletedData = [];
+    let discoveredTesters = [];
+    let currentRows = [];
+
+    dropZone.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", e => handleFiles(e.target.files));
+    dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("dragover"); });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+    dropZone.addEventListener("drop", e => { e.preventDefault(); dropZone.classList.remove("dragover"); handleFiles(e.dataTransfer.files); });
+    applyBtn.addEventListener("click", () => { saveTeList(); calculateHoursTable(); });
+    downloadBtn.addEventListener("click", downloadResult);
+
+    function handleFiles(files) {
+      if (!files.length) return;
+      const file = files[0];
+      fileNameDisplay.textContent = `已載入：${file.name}`;
+      const reader = new FileReader();
+      if (file.name.toLowerCase().endsWith(".csv")) {
+        reader.onload = e => processData(e.target.result, "csv");
+        reader.readAsText(file, "UTF-8");
+      } else if (file.name.toLowerCase().endsWith(".xlsx")) {
+        reader.onload = e => processData(new Uint8Array(e.target.result), "xlsx");
+        reader.readAsArrayBuffer(file);
+      } else {
+        alert("請選擇 .xlsx 或 .csv 檔案");
+      }
+    }
+
+    function processData(data, type) {
+      try {
+        const workbook = type === "csv" ? XLSX.read(data, { type: "string", raw: true }) : XLSX.read(data, { type: "array" });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+        const headerRowIndex = findHeaderRow(rows);
+        const headers = rows[headerRowIndex].map(h => String(h).trim());
+        const rawData = rows.slice(headerRowIndex + 1).map(row => {
+          const obj = {};
+          headers.forEach((h, i) => obj[h] = row[i] !== undefined ? String(row[i]).trim() : "");
+          return obj;
+        }).filter(obj => obj.Tester || obj.Result);
+
+        const uncompletedStatus = ["In-Progress", "Blocked", "Incomplete Steps", "Incomplete"];
+        allUncompletedData = rawData.filter(item => {
+          const result = item.Result || "";
+          const blockedSteps = parseFloat(item["Blocked Steps"]) || 0;
+          const incompleteSteps = parseFloat(item["Incomplete Steps"]) || 0;
+          return uncompletedStatus.some(status => result.toLowerCase().includes(status.toLowerCase())) || blockedSteps > 0 || incompleteSteps > 0;
+        });
+        allUncompletedData.forEach(item => { if (!item.Tester) item.Tester = "Unassigned"; });
+        discoveredTesters = [...new Set(allUncompletedData.map(item => item.Tester))].sort();
+        teListInput.value = localStorage.getItem(STORAGE_KEY) || "";
+        filterSection.classList.remove("hidden");
+        calculateHoursTable();
+      } catch (err) {
+        console.error(err);
+        alert("檔案解析失敗：" + err.message);
+      }
+    }
+
+    function findHeaderRow(rows) {
+      for (let i = 0; i < Math.min(rows.length, 10); i++) {
+        const lower = rows[i].map(cell => String(cell).trim().toLowerCase());
+        if (lower.includes("tester") || lower.includes("result")) return i;
+      }
+      return 0;
+    }
+
+    function getTeTerms() {
+      return teListInput.value.split(/[\n,;]+/).map(item => item.trim()).filter(Boolean);
+    }
+
+    function testerMatches(tester, term) {
+      const testerLower = String(tester || "").toLowerCase();
+      const termLower = String(term || "").toLowerCase();
+      return testerLower === termLower || testerLower.includes(termLower) || termLower.includes(testerLower);
+    }
+
+    function getActiveTEs() {
+      const terms = getTeTerms();
+      if (!terms.length) return discoveredTesters.slice();
+      return discoveredTesters.filter(tester => terms.some(term => testerMatches(tester, term)));
+    }
+
+    function saveTeList() {
+      localStorage.setItem(STORAGE_KEY, teListInput.value);
+    }
+
+    function calculateHoursTable() {
+      saveTeList();
+      const activeTEs = getActiveTEs();
+      previewTableBody.innerHTML = "";
+      if (!activeTEs.length) {
+        previewTableBody.innerHTML = `<tr><td colspan="3" class="p-6 text-center text-slate-400">找不到符合名單的 TE</td></tr>`;
+        resultSection.classList.remove("hidden");
+        return;
+      }
+
+      currentRows = [];
+      let grandTotalHours = 0;
+      let grandTotalCases = 0;
+
+      activeTEs.forEach(tester => {
+        const items = allUncompletedData.filter(item => item.Tester === tester);
+        const totalMinutes = items.reduce((sum, item) => sum + (parseFloat(item["Planned Setup Time"]) || 0) + (parseFloat(item["Planned Attended Time"]) || 0), 0);
+        const hours = totalMinutes / 60;
+        grandTotalHours += hours;
+        grandTotalCases += items.length;
+        currentRows.push({ tester, displayName: tester.split("@")[0], caseCount: items.length, hours });
+      });
+
+      currentRows.forEach(row => {
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-50 transition";
+        tr.innerHTML = `
+          <td class="p-3 text-center font-medium text-slate-700">${escapeHtml(row.displayName)}</td>
+          <td class="p-3 text-center text-slate-500 font-mono">${row.caseCount}</td>
+          <td class="p-3 text-right font-bold text-sky-700 font-mono">${row.hours.toFixed(2)} Hrs</td>
+        `;
+        previewTableBody.appendChild(tr);
+      });
+
+      const totalRow = document.createElement("tr");
+      totalRow.className = "bg-slate-100 font-bold text-slate-800";
+      totalRow.innerHTML = `
+        <td class="p-3 text-center">Total</td>
+        <td class="p-3 text-center font-mono">${grandTotalCases}</td>
+        <td class="p-3 text-right text-emerald-700 font-mono">${grandTotalHours.toFixed(2)} Hrs</td>
+      `;
+      previewTableBody.appendChild(totalRow);
+      summaryText.textContent = `已統計 ${activeTEs.length} 位 TE，未完成總時數 ${grandTotalHours.toFixed(2)} Hrs`;
+      resultSection.classList.remove("hidden");
+    }
+
+    function downloadResult() {
+      if (!currentRows.length) return;
+      const excelData = [["Tester", "Uncompleted Case Count", "Uncompleted Hours"]];
+      let grandTotalHours = 0;
+      let grandTotalCases = 0;
+      currentRows.forEach(row => {
+        grandTotalHours += row.hours;
+        grandTotalCases += row.caseCount;
+        excelData.push([row.displayName, row.caseCount, Number(row.hours.toFixed(2))]);
+      });
+      excelData.push(["Total", grandTotalCases, Number(grandTotalHours.toFixed(2))]);
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(excelData);
+      ws["!cols"] = [{ wch: 28 }, { wch: 22 }, { wch: 22 }];
+      XLSX.utils.book_append_sheet(wb, ws, "TE Uncompleted Hours");
+      XLSX.writeFile(wb, "TE_Uncompleted_Hours.xlsx");
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+  </script>
+</body>
+</html>
