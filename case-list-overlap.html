@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Case List Overlap Tool</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root { --ink:#172033; --muted:#64748b; --line:#d9e1ec; --brand:#2563eb; --pale:#eff6ff; --good:#047857; --warn:#b45309; }
+    * { box-sizing:border-box; } body { margin:0; background:#f7f9fc; color:var(--ink); font:14px/1.5 Inter, "Microsoft JhengHei", system-ui, sans-serif; }
+    main { max-width:1100px; margin:0 auto; padding:42px 24px 64px; }
+    h1 { font-size:30px; margin:0 0 8px; letter-spacing:-.5px; } h2 { font-size:16px; margin:0 0 14px; } p { color:var(--muted); margin:0; }
+    .hero { display:flex; justify-content:space-between; gap:24px; align-items:start; margin-bottom:26px; }.tag { color:var(--brand); font-weight:700; font-size:12px; letter-spacing:.08em; text-transform:uppercase; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:14px; padding:22px; margin:16px 0; box-shadow:0 4px 18px rgba(15,23,42,.035); }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }.file { border:1.5px dashed #b8c6d8; border-radius:10px; padding:16px; background:#fbfdff; }.file strong { display:block; margin-bottom:7px; }.file small { display:block; color:var(--muted); margin:6px 0 12px; }
+    input[type=file], select { width:100%; padding:9px 10px; border:1px solid #cbd5e1; border-radius:7px; background:white; color:var(--ink); } label { display:block; font-weight:650; margin:0 0 6px; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:end; }.field { flex:1 1 210px; }.keys { display:flex; flex-wrap:wrap; gap:8px; border:1px solid #dbe4ef; min-height:42px; padding:8px; border-radius:7px; background:#fff; }.key { padding:4px 9px; border:1px solid #cfe0ff; border-radius:999px; background:var(--pale); cursor:pointer; user-select:none; }.key input { margin-right:5px; vertical-align:-1px; }
+    button { border:0; border-radius:8px; padding:10px 15px; font:inherit; font-weight:700; cursor:pointer; background:var(--brand); color:#fff; } button.secondary { background:#e9eef6; color:#28364d; } button:disabled { opacity:.45; cursor:not-allowed; }.hint { font-size:12px; color:var(--muted); margin-top:8px; }.status { min-height:21px; margin:13px 0 0; font-weight:600; }.status.ok { color:var(--good); }.status.error { color:#b91c1c; }
+    .summary { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }.metric { padding:14px; background:#f8fafc; border-radius:9px; border:1px solid #e5eaf1; }.metric b { display:block; font-size:22px; }.metric span { color:var(--muted); font-size:12px; }
+    table { width:100%; border-collapse:collapse; font-size:12px; margin-top:16px; } th,td { padding:8px 10px; text-align:left; border-bottom:1px solid #e6ebf2; max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } th { background:#f8fafc; color:#475569; }.hidden { display:none; } @media(max-width:680px){main{padding:25px 14px}.grid{grid-template-columns:1fr}.hero{display:block}.summary{grid-template-columns:1fr 1fr}}
+  </style>
+</head>
+<body>
+<main>
+  <section class="hero"><div><div class="tag">Case list utility</div><h1>Case List 重疊資料保留工具</h1><p>以最新 case list 為主，找出舊清單中仍存在的 case，並保留其既有測試資料。輸出欄位固定對齊 2547 工作表格式。</p></div></section>
+
+  <section class="card">
+    <h2>1. 上傳兩份清單</h2>
+    <div class="grid">
+      <div class="file"><strong>最新 Case List（輸出基礎）</strong><small>可一次選取多個 Test Iteration Metrics Report 檔案</small><input id="latestFile" type="file" accept=".xlsx,.xls,.csv" multiple /></div>
+      <div class="file"><strong>舊 Case List（保留資料來源）</strong><small>上傳含 2547 格式、已填寫測試資料的舊版本</small><input id="oldFile" type="file" accept=".xlsx,.xls,.csv" /></div>
+    </div>
+    <div class="row" style="margin-top:16px"><button id="compareBtn" disabled>比對並產生 2547 檔案</button><button id="exportBtn" class="secondary" disabled>匯出 Excel</button></div>
+    <div id="fileStatus" class="status"></div>
+  </section>
+  <section id="results" class="card hidden"><h2>2. 結果預覽</h2><div class="summary"><div class="metric"><b id="latestCount">—</b><span>最新清單筆數</span></div><div class="metric"><b id="matchCount">—</b><span>重疊並沿用舊資料</span></div><div class="metric"><b id="newCount">—</b><span>新 case（舊欄位為 NA）</span></div></div><div id="tableWrap"></div></section>
+</main>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const outputHeaders = ['Test ID','Iteration Name','Test Case Name','TC ID.Version','Configuration Name','xx','Tester','Result','Group','Week','Test hours','Date','Note','比對狀態'];
+  const carryHeaders = ['Tester','Result','Group','Week','Test hours','Date','Note'];
+  const state = { latestBooks:[], oldBook:null, latestRows:[], oldRows:[], result:[] };
+  const norm = v => String(v ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+  const compareValue = (field, value) => field==='TC ID.Version' ? norm(value).split('.')[0] : norm(value);
+  const hoursFromPlan = row => {
+    const toNumber = value => Number(String(value ?? '').replace(/,/g,'')) || 0;
+    const setup=row['Planned Setup Time'], attended=row['Planned Attended Time'];
+    if (String(setup ?? '').trim()==='' && String(attended ?? '').trim()==='') return 'NA';
+    return Number(((toNumber(setup)+toNumber(attended))/60).toFixed(2));
+  };
+  const readFile = file => new Promise((resolve,reject) => { const r=new FileReader(); r.onload=e=>resolve(XLSX.read(e.target.result,{type:'array',cellDates:true})); r.onerror=reject; r.readAsArrayBuffer(file); });
+  function status(id,msg,type='') { const el=$(id); el.textContent=msg; el.className='status '+type; }
+  async function loadBooks() {
+    const latest=[...$('latestFile').files], old=$('oldFile').files[0]; if(!latest.length||!old) return;
+    try { status('fileStatus','正在讀取檔案…'); state.latestBooks=await Promise.all(latest.map(readFile)); state.oldBook=await readFile(old); $('compareBtn').disabled=false; status('fileStatus',`已載入 ${latest.length} 個新檔案與舊檔 ${old.name}。按下按鈕即可彙整並比對。`,'ok'); } catch(e) { status('fileStatus','無法讀取檔案：'+e.message,'error'); }
+  }
+  function sheetRows(book,name) {
+    const sheet=book.Sheets[name];
+    const raw=XLSX.utils.sheet_to_json(sheet,{header:1,defval:'',raw:false,blankrows:false});
+    let headerRow=raw.findIndex(row => row.includes('Test ID') && (row.includes('TC ID.Version') || row.includes('Configuration Name')));
+    if (headerRow < 0) headerRow=raw.findIndex(row => row.filter(v=>String(v).trim()!=='').length >= 2);
+    if (headerRow < 0) return { rows:[], headerRow:0 };
+    return { rows:XLSX.utils.sheet_to_json(sheet,{defval:'',raw:false,range:headerRow}), headerRow };
+  }
+  function compare() {
+    const oldSheet=state.oldBook.SheetNames.find(n=>n==='2547') || state.oldBook.SheetNames[0];
+    const latestData=state.latestBooks.map(book=>{ const sheet=book.SheetNames.find(n=>/Test Iteration Metrics Report/i.test(n)) || book.SheetNames[0]; return { sheet, data:sheetRows(book,sheet) }; });
+    const oldData=sheetRows(state.oldBook,oldSheet);
+    const keys=['Iteration Name','TC ID.Version','Configuration Name'];
+    state.latestRows=latestData.flatMap(x=>x.data.rows).filter(row=>keys.every(k=>String(row[k]??'').trim()!==''));
+    state.oldRows=oldData.rows.filter(row=>keys.every(k=>String(row[k]??'').trim()!==''));
+    if (!state.latestRows.length || !state.oldRows.length || !keys.every(k=>state.latestRows[0]?.hasOwnProperty(k) && state.oldRows[0]?.hasOwnProperty(k))) return status('fileStatus','找不到必要欄位，請確認新檔為報表格式、舊檔含 2547 資料。','error');
+    const oldMap=new Map(); state.oldRows.forEach(row=>{ const key=keys.map(k=>compareValue(k,row[k])).join('\u001f'); if(key.replace(/\u001f/g,'') && !oldMap.has(key)) oldMap.set(key,row); });
+  function escapeHtml(v) { const d=document.createElement('div'); d.textContent=v; return d.innerHTML; }
+    state.result=state.latestRows.map(row=>{
+      const old=oldMap.get(keys.map(k=>compareValue(k,row[k])).join('\u001f'));
+      const out={
+        'Test ID':row['Test ID']??'', 'Iteration Name':row['Iteration Name']??'', 'Test Case Name':row['Test Case Name']??'',
+        'TC ID.Version':row['TC ID.Version']??'', 'Configuration Name':row['Configuration Name']??'',
+        'xx':`${row['Iteration Name']??''}${row['TC ID.Version']??''}${row['Configuration Name']??''}`,
+        'Tester':row['Tester']??'', 'Result':row['Result']??'', 'Group':'NA', 'Week':'NA', 'Test hours':hoursFromPlan(row), 'Date':'NA', 'Note':'NA', '比對狀態':old?'保留舊資料':'新增 case'
+      };
+      if (old) carryHeaders.filter(h=>h!=='Test hours').forEach(h=>{ const latest=out[h]??'', previous=old[h]??''; out[h]=previous!==''?previous:latest; });
+      return out;
+    });
+    const matchCount=state.latestRows.filter(row=>oldMap.has(keys.map(k=>compareValue(k,row[k])).join('\u001f'))).length;
+    $('latestCount').textContent=state.latestRows.length.toLocaleString(); $('matchCount').textContent=matchCount.toLocaleString(); $('newCount').textContent=(state.latestRows.length-matchCount).toLocaleString();
+    const preview=state.result.slice(0,20); $('tableWrap').innerHTML=preview.length?`<table><thead><tr>${outputHeaders.map(h=>`<th>${escapeHtml(h)}</th>`).join('')}</tr></thead><tbody>${preview.map(r=>`<tr>${outputHeaders.map(h=>`<td title="${escapeHtml(r[h])}">${escapeHtml(r[h])}</td>`).join('')}</tr>`).join('')}</tbody></table><div class="hint">預覽前 20 筆；匯出檔固定使用 2547 的欄位順序，並包含全部 ${state.result.length} 筆最新 case。</div>`:'';
+    $('results').classList.remove('hidden'); $('exportBtn').disabled=!state.result.length; status('fileStatus',`完成：已彙整 ${latestData.length} 個新檔案並與 ${oldSheet} 自動比對，沿用 ${matchCount} 筆舊資料；其餘 ${state.latestRows.length-matchCount} 筆以 NA 補齊舊格式欄位。`,'ok');
+  }
+  function exportXlsx() { const ws=XLSX.utils.json_to_sheet(state.result,{header:outputHeaders}); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'2547'); XLSX.writeFile(wb,'case_list_overlapping.xlsx'); }
+  ['latestFile','oldFile'].forEach(id=>$(id).addEventListener('change',loadBooks)); $('compareBtn').addEventListener('click',compare); $('exportBtn').addEventListener('click',exportXlsx);
+})();
+</script>
+</body>
+</html>
