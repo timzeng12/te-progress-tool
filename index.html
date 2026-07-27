@@ -1,63 +1,23 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TE Tools</title>
-  <style>
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      background: #f6f8fb;
-      color: #152033;
-      font-family: "Segoe UI", "Microsoft JhengHei", sans-serif;
-    }
-    main {
-      width: min(760px, calc(100vw - 32px));
-      background: white;
-      border: 1px solid #d8e0ea;
-      border-radius: 18px;
-      padding: 34px;
-      box-shadow: 0 18px 44px rgba(15, 23, 42, .08);
-    }
-    h1 { margin: 0 0 10px; font-size: 30px; text-align: center; }
-    p { margin: 0 0 28px; color: #64748b; text-align: center; }
-    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-    a {
-      display: block;
-      padding: 20px;
-      border: 1px solid #d8e0ea;
-      border-radius: 14px;
-      color: #0f172a;
-      text-decoration: none;
-      background: #fbfdff;
-    }
-    a:hover { border-color: #0369a1; background: #f0f9ff; }
-    strong { display: block; margin-bottom: 8px; color: #075985; font-size: 18px; }
-    span { color: #64748b; font-size: 14px; line-height: 1.5; }
-    @media (max-width: 680px) { .grid { grid-template-columns: 1fr; } }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TE Tools</title>
+<style>
+body { margin:0; min-height:100vh; display:grid; place-items:center; background:#f6f8fb; color:#152033; font-family:"Segoe UI","Microsoft JhengHei",sans-serif; }
+main { width:min(760px,calc(100vw - 32px)); background:white; border:1px solid #d8e0ea; border-radius:18px; padding:34px; box-shadow:0 18px 44px rgba(15,23,42,.08); }
+h1 { margin:0 0 10px; font-size:30px; text-align:center; } p { margin:0 0 28px; color:#64748b; text-align:center; }
+.grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+a { display:block; padding:20px; border:1px solid #d8e0ea; border-radius:14px; color:#0f172a; text-decoration:none; background:#fbfdff; }
+a:hover { border-color:#2563eb; box-shadow:0 8px 22px rgba(37,99,235,.12); } strong,span { display:block; } strong { font-size:18px; margin-bottom:8px; } span { color:#64748b; line-height:1.5; }
+@media(max-width:600px){.grid{grid-template-columns:1fr;}}
+</style>
 </head>
-<body>
-  <main>
-    <h1>TE Tools</h1>
-    <p>選擇要使用的 TestVault 統計工具</p>
-    <div class="grid">
-      <a href="TEProgressTool.html">
-        <strong>TE 每日產出進度</strong>
-        <span>依日期統計每位 TE 的 Planned Setup Time + Planned Attended Time。</span>
-      </a>
-      <a href="uncompleted.html">
-        <strong>TE 未完成時數</strong>
-        <span>統計 In-Progress / Blocked / Incomplete 等未完成項目的預估時數。</span>
-      </a>
-      <a href="case-list-overlap.html">
-        <strong>Case List Overlap Tool</strong>
-        <span>上傳新舊 Case List，自動保留舊資料並輸出彙整結果。</span>
-      </a>
-    </div>
-  </main>
-</body>
-</html>
+<body><main>
+<h1>TE Tools</h1><p>選擇要使用的工具</p>
+<div class="grid">
+<a href="TEProgressTool.html"><strong>TE Progress Tool</strong><span>追蹤與整理 TE 工作進度。</span></a>
+<a href="uncompleted.html"><strong>Uncompleted Tool</strong><span>整理未完成項目。</span></a>
+<a href="case-list-overlap.html"><strong>Case List Overlap Tool</strong><span>上傳新舊 Case List，自動保留舊資料並輸出彙整結果。</span></a>
+</div></main></body></html>
