@@ -63,7 +63,8 @@
     if (headerRow < 0) return { rows:[], headerRow:0 };
     const rows=XLSX.utils.sheet_to_json(sheet,{defval:'',raw:false,range:headerRow});
     const headers=raw[headerRow] || [];
-    const links=rows.map((_,i)=>{ const out={}; ['Test ID','Iteration Name'].forEach(h=>{ const c=headers.indexOf(h); if(c>=0){ const cell=sheet[XLSX.utils.encode_cell({r:headerRow+1+i,c})]; if(cell?.l?.Target) out[h]=cell.l.Target; } }); return out; });
+    const linkFromCell=cell=>{ if(cell?.l?.Target) return cell.l.Target; const f=String(cell?.f||''); const m=f.match(/HYPERLINK\(\s*["']([^"']+)["']/i); return m?m[1]:''; };
+    const links=rows.map((_,i)=>{ const out={}; ['Test ID','Iteration Name'].forEach(h=>{ const c=headers.indexOf(h); if(c>=0){ const cell=sheet[XLSX.utils.encode_cell({r:headerRow+1+i,c})]; const url=linkFromCell(cell); if(url) out[h]=url; } }); return out; });
     return { rows, headerRow, links };
   }
   function compare() {
