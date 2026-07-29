@@ -84,7 +84,7 @@
         'Test ID':row['Test ID']??'', 'Iteration Name':row['Iteration Name']??'', 'Test Case Name':row['Test Case Name']??'',
         'TC ID.Version':row['TC ID.Version']??'', 'Configuration Name':row['Configuration Name']??'',
         'xx':`${row['Iteration Name']??''}${row['TC ID.Version']??''}${row['Configuration Name']??''}`,
-        'Tester':row['Tester']??'', 'Result':row['Result']??'', 'Group':'NA', 'Week':'NA', 'Test hours':hoursFromPlan(row), 'Date':'NA', 'Note':'NA', '比對狀態':old?'保留舊資料':'新增 case'
+        'Tester':row['Tester']??'', 'Result':row['Result']??'', 'Group':'NA', 'Week':'NA', 'Test hours':hoursFromPlan(row), 'Date':'NA', 'Note':'NA', '比對狀態':old?'保留舊資料':'新增 case', '__links':row.__links||{}
       };
       if (old) carryHeaders.filter(h=>h!=='Test hours').forEach(h=>{ const latest=out[h]??'', previous=old[h]??''; out[h]=previous!==''?previous:latest; });
       return out;
