@@ -111,7 +111,7 @@
       const name=String(row['Iteration Name']??'').trim()||'NA', hours=Number(row['Test hours'])||0;
       const result=String(row['Result']??'').trim().toLowerCase(), tester=String(row['Tester']??'').trim().toLowerCase();
       const item=summary.get(name)||{iteration:name,total:0,incomplete:0,unassigned:0}; item.total+=hours;
-      if(!['pass','passed','complete','completed'].includes(result)) item.incomplete+=hours;
+      if(['incomplete','in-progress'].includes(result)) item.incomplete+=hours;
       if(!tester||tester==='na') item.unassigned+=hours; summary.set(name,item);
     });
     const summaryRows=[['Iteration Name','Total Test Hours','Uncompleted Hours','Unassigned Tester Hours'],...Array.from(summary.values()).sort((a,b)=>a.iteration.localeCompare(b.iteration)).map(x=>[x.iteration,Number(x.total.toFixed(2)),Number(x.incomplete.toFixed(2)),Number(x.unassigned.toFixed(2))])];
