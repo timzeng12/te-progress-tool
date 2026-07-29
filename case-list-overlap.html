@@ -56,16 +56,16 @@
     try { status('fileStatus','正在讀取檔案…'); state.latestBooks=await Promise.all(latest.map(readFile)); state.oldBook=await readFile(old); $('compareBtn').disabled=false; status('fileStatus',`已載入 ${latest.length} 個新檔案與舊檔 ${old.name}。按下按鈕即可彙整並比對。`,'ok'); } catch(e) { status('fileStatus','無法讀取檔案：'+e.message,'error'); }
   }
   function sheetRows(book,name) {
-    const sheet=book.Sheets[name], range=XLSX.utils.decode_range(sheet['!ref']||'A1');
-    const raw=XLSX.utils.sheet_to_json(sheet,{header:1,defval:'',raw:false,blankrows:true});
+    const sheet=book.Sheets[name];
+    const raw=XLSX.utils.sheet_to_json(sheet,{header:1,defval:'',raw:false,blankrows:false});
     let headerRow=raw.findIndex(row => row.includes('Test ID') && (row.includes('TC ID.Version') || row.includes('Configuration Name')));
     if (headerRow < 0) headerRow=raw.findIndex(row => row.filter(v=>String(v).trim()!=='').length >= 2);
     if (headerRow < 0) return { rows:[], headerRow:0, links:[] };
-    const headers=raw[headerRow] || [], startRow=range.s.r+headerRow;
-    const valueOf=cell=>cell?.w ?? cell?.v ?? '';
+    const rows=XLSX.utils.sheet_to_json(sheet,{defval:'',raw:false,range:headerRow});
+    const headers=raw[headerRow] || [];
     const linkFromCell=cell=>{ if(cell?.l) return cell.l.Target || cell.l.target || cell.l.Location || cell.l.location || ''; const f=String(cell?.f||''); const m=f.match(/(?:_xlfn\.)?HYPERLINK\s*\(\s*(?:\"([^\"]+)\"|'([^']+)'|([^,;]+))/i); return (m?.[1]||m?.[2]||m?.[3]||'').trim(); };
-    const rows=[], links=[];
-    for(let r=startRow+1;r<=range.e.r;r++){ const row={}, link={}; headers.forEach((header,i)=>{ const h=String(header??'').trim(); if(!h) return; const cell=sheet[XLSX.utils.encode_cell({r,c:range.s.c+i})]; row[h]=valueOf(cell); ifh==='Test ID'{ const url=linkFromCell(cell); if(url) link[h]=url; } }); if(Object.values(row).some(v=>String(v).trim()!=='')){ rows.push(row); links.push(link); } }
+    const populatedRows=[...new Set(Object.keys(sheet).filter(a=>/^[A-Z]+\d+$/.test(a) && (sheet[a]?.v!==undefined || sheet[a]?.f!==undefined)).map(a=>XLSX.utils.decode_cell(a).r).filter(r=>r>headerRow))].sort((a,b)=>a-b);
+    const links=rows.map((_,i)=>{ const out={}, r=populatedRows[i]; ['Test ID'].forEach(h=>{ const c=headers.indexOf(h); if(r!==undefined && c>=0){ const url=linkFromCell(sheet[XLSX.utils.encode_cell({r,c})]); if(url) out[h]=url; } }); return out; });
     return { rows, headerRow, links };
   }
   function compare() {
