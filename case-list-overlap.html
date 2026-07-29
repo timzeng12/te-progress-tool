@@ -96,7 +96,28 @@
     const preview=state.result.slice(0,20); $('tableWrap').innerHTML=preview.length?`<table><thead><tr>${outputHeaders.map(h=>`<th>${escapeHtml(h)}</th>`).join('')}</tr></thead><tbody>${preview.map(r=>`<tr>${outputHeaders.map(h=>`<td title="${escapeHtml(r[h])}">${h==='Test ID' && r.__links?.[h] ? '<a href="'+escapeHtml(r.__links[h])+'" target="_blank" rel="noopener">'+escapeHtml(r[h])+'</a>' : escapeHtml(r[h])}</td>`).join('')}</tr>`).join('')}</tbody></table><div class="hint">預覽前 20 筆；匯出檔固定使用 2547 的欄位順序，並包含全部 ${state.result.length} 筆最新 case。</div>`:'';
     $('results').classList.remove('hidden'); $('exportBtn').disabled=!state.result.length; status('fileStatus',`完成：已彙整 ${latestData.length} 個新檔案並與 ${oldSheet} 自動比對，沿用 ${matchCount} 筆舊資料；其餘 ${state.latestRows.length-matchCount} 筆以 NA 補齊舊格式欄位；已從新檔保留 ${linkCount} 個 Test ID／Iteration Name 超連結。`,'ok');
   }
-  function exportXlsx() { const ws=XLSX.utils.json_to_sheet(state.result,{header:outputHeaders}); const idCol=outputHeaders.indexOf('Test ID'); state.result.forEach((row,r)=>{ const url=row.__links?.['Test ID']; if(url){ const cell=ws[XLSX.utils.encode_cell({r:r+1,c:idCol})]; if(cell){ const label=String(row['Test ID']??'').replace(/"/g,'""'); const target=String(url).replace(/"/g,'""'); cell.f='HYPERLINK("'+target+'","'+label+'")'; cell.v=String(row['Test ID']??''); cell.t='s'; cell.l={Target:url}; } } }); const summary=new Map(); state.result.forEach(row=>{ const name=String(row['Iteration Name']??'').trim()||'NA'; const hours=Number(row['Test hours'])||0, result=String(row['Result']??'').trim().toLowerCase(), tester=String(row['Tester']??'').trim().toLowerCase(); const item=summary.get(name)||{iteration:name,total:0,incomplete:0,unassigned:0}; item.total+=hours; if(!['pass','passed','complete','completed'].includes(result)) item.incomplete+=hours; if(!tester||tester==='na') item.unassigned+=hours; summary.set(name,item); }); const summaryRows=[['Iteration Name','Total Test Hours','Uncompleted Hours','Unassigned Tester Hours'],...Array.from(summary.values()).sort((a,b)=>a.iteration.localeCompare(b.iteration)).map(x=>[x.iteration,Number(x.total.toFixed(2)),Number(x.incomplete.toFixed(2)),Number(x.unassigned.toFixed(2)])]; const summaryWs=XLSX.utils.aoa_to_sheet(summaryRows); summaryWs['!cols']=[{wch:42},{wch:18},{wch:20},{wch:25}]; const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'2547'); XLSX.utils.book_append_sheet(wb,summaryWs,'Iteration Summary'); XLSX.writeFile(wb,'case_list_overlapping.xlsx'); }
+  function exportXlsx() {
+    const ws=XLSX.utils.json_to_sheet(state.result,{header:outputHeaders});
+    const idCol=outputHeaders.indexOf('Test ID');
+    state.result.forEach((row,r)=>{
+      const url=row.__links?.['Test ID']; if(!url) return;
+      const cell=ws[XLSX.utils.encode_cell({r:r+1,c:idCol})]; if(!cell) return;
+      const label=String(row['Test ID']??'').replace(/"/g,'""');
+      const target=String(url).replace(/"/g,'""');
+      cell.f='HYPERLINK("'+target+'","'+label+'")'; cell.v=String(row['Test ID']??''); cell.t='s'; cell.l={Target:url};
+    });
+    const summary=new Map();
+    state.result.forEach(row=>{
+      const name=String(row['Iteration Name']??'').trim()||'NA', hours=Number(row['Test hours'])||0;
+      const result=String(row['Result']??'').trim().toLowerCase(), tester=String(row['Tester']??'').trim().toLowerCase();
+      const item=summary.get(name)||{iteration:name,total:0,incomplete:0,unassigned:0}; item.total+=hours;
+      if(!['pass','passed','complete','completed'].includes(result)) item.incomplete+=hours;
+      if(!tester||tester==='na') item.unassigned+=hours; summary.set(name,item);
+    });
+    const summaryRows=[['Iteration Name','Total Test Hours','Uncompleted Hours','Unassigned Tester Hours'],...Array.from(summary.values()).sort((a,b)=>a.iteration.localeCompare(b.iteration)).map(x=>[x.iteration,Number(x.total.toFixed(2)),Number(x.incomplete.toFixed(2)),Number(x.unassigned.toFixed(2)])];
+    const summaryWs=XLSX.utils.aoa_to_sheet(summaryRows); summaryWs['!cols']=[{wch:42},{wch:18},{wch:20},{wch:25}];
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'2547'); XLSX.utils.book_append_sheet(wb,summaryWs,'Iteration Summary'); XLSX.writeFile(wb,'case_list_overlapping.xlsx');
+  }
   ['latestFile','oldFile'].forEach(id=>$(id).addEventListener('change',loadBooks)); $('compareBtn').addEventListener('click',compare); $('exportBtn').addEventListener('click',exportXlsx);
 })();
 </script>
