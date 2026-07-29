@@ -49,11 +49,12 @@
     if (String(setup ?? '').trim()==='' && String(attended ?? '').trim()==='') return 'NA';
     return Number(((toNumber(setup)+toNumber(attended))/60).toFixed(2));
   };
-  const readFile = file => new Promise((resolve,reject) => { const r=new FileReader(); r.onload=e=>resolve(XLSX.read(e.target.result,{type:'array',cellDates:true})); r.onerror=reject; r.readAsArrayBuffer(file); });
+  const readBuffer = file => new Promise((resolve,reject) => { const r=new FileReader(); r.onload=e=>resolve(e.target.result); r.onerror=reject; r.readAsArrayBuffer(file); });
+  async function readNeededBook(file,pickSheet) { const buffer=await readBuffer(file); const names=XLSX.read(buffer,{type:'array',bookSheets:true}).SheetNames; const sheet=pickSheet(names); return { sheet, book:XLSX.read(buffer,{type:'array',cellDates:true,sheets:[sheet]}) }; }
   function status(id,msg,type='') { const el=$(id); el.textContent=msg; el.className='status '+type; }
   async function loadBooks() {
     const latest=[...$('latestFile').files], old=$('oldFile').files[0]; if(!latest.length||!old) return;
-    try { status('fileStatus','正在讀取檔案…'); state.latestBooks=await Promise.all(latest.map(readFile)); state.oldBook=await readFile(old); $('compareBtn').disabled=false; status('fileStatus',`已載入 ${latest.length} 個新檔案與舊檔 ${old.name}。按下按鈕即可彙整並比對。`,'ok'); } catch(e) { status('fileStatus','無法讀取檔案：'+e.message,'error'); }
+    try { status('fileStatus','正在讀取需要的工作表…'); state.latestBooks=await Promise.all(latest.map(file=>readNeededBook(file,names=>names.find(n=>/Test Iteration Metrics Report/i.test(n))||names[0]))); state.oldBook=await readNeededBook(old,names=>names.find(n=>n==='2547')||names[0]); $('compareBtn').disabled=false; status('fileStatus','已載入 '+latest.length+' 個新檔案與舊檔 '+old.name+'。按下按鈕即可彙整並比對。','ok'); } catch(e) { status('fileStatus','無法讀取檔案：'+e.message,'error'); }
   }
   function sheetRows(book,name) {
     const sheet=book.Sheets[name];
@@ -69,9 +70,9 @@
     return { rows, headerRow, links };
   }
   function compare() {
-    const oldSheet=state.oldBook.SheetNames.find(n=>n==='2547') || state.oldBook.SheetNames[0];
-    const latestData=state.latestBooks.map(book=>{ const sheet=book.SheetNames.find(n=>/Test Iteration Metrics Report/i.test(n)) || book.SheetNames[0]; return { sheet, data:sheetRows(book,sheet) }; });
-    const oldData=sheetRows(state.oldBook,oldSheet);
+    const oldSheet=state.oldBook.sheet;
+    const latestData=state.latestBooks.map(item=>({ sheet:item.sheet, data:sheetRows(item.book,item.sheet) }));
+    const oldData=sheetRows(state.oldBook.book,oldSheet);
     const keys=['Iteration Name','TC ID.Version','Configuration Name'];
     state.latestRows=latestData.flatMap(x=>x.data.rows.map((row,i)=>({...row,__links:x.data.links?.[i]||{}}))).filter(row=>keys.every(k=>String(row[k]??'').trim()!==''));
     state.oldRows=oldData.rows.filter(row=>keys.every(k=>String(row[k]??'').trim()!==''));
