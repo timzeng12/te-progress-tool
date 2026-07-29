@@ -56,15 +56,16 @@
     try { status('fileStatus','正在讀取檔案…'); state.latestBooks=await Promise.all(latest.map(readFile)); state.oldBook=await readFile(old); $('compareBtn').disabled=false; status('fileStatus',`已載入 ${latest.length} 個新檔案與舊檔 ${old.name}。按下按鈕即可彙整並比對。`,'ok'); } catch(e) { status('fileStatus','無法讀取檔案：'+e.message,'error'); }
   }
   function sheetRows(book,name) {
-    const sheet=book.Sheets[name];
-    const raw=XLSX.utils.sheet_to_json(sheet,{header:1,defval:'',raw:false,blankrows:false});
+    const sheet=book.Sheets[name], range=XLSX.utils.decode_range(sheet['!ref']||'A1');
+    const raw=XLSX.utils.sheet_to_json(sheet,{header:1,defval:'',raw:false,blankrows:true});
     let headerRow=raw.findIndex(row => row.includes('Test ID') && (row.includes('TC ID.Version') || row.includes('Configuration Name')));
     if (headerRow < 0) headerRow=raw.findIndex(row => row.filter(v=>String(v).trim()!=='').length >= 2);
-    if (headerRow < 0) return { rows:[], headerRow:0 };
-    const rows=XLSX.utils.sheet_to_json(sheet,{defval:'',raw:false,range:headerRow});
-    const headers=raw[headerRow] || [];
-    const linkFromCell=cell=>{ if(cell?.l?.Target) return cell.l.Target; const f=String(cell?.f||''); const m=f.match(/HYPERLINK\(\s*["']([^"']+)["']/i); return m?m[1]:''; };
-    const links=rows.map((_,i)=>{ const out={}; ['Test ID','Iteration Name'].forEach(h=>{ const c=headers.indexOf(h); if(c>=0){ const cell=sheet[XLSX.utils.encode_cell({r:headerRow+1+i,c})]; const url=linkFromCell(cell); if(url) out[h]=url; } }); return out; });
+    if (headerRow < 0) return { rows:[], headerRow:0, links:[] };
+    const headers=raw[headerRow] || [], startRow=range.s.r+headerRow;
+    const valueOf=cell=>cell?.w ?? cell?.v ?? '';
+    const linkFromCell=cell=>{ if(cell?.l) return cell.l.Target || cell.l.target || cell.l.Location || cell.l.location || ''; const f=String(cell?.f||''); const m=f.match(/(?:_xlfn\.)?HYPERLINK\s*\(\s*(?:\"([^\"]+)\"|'([^']+)'|([^,;]+))/i); return (m?.[1]||m?.[2]||m?.[3]||'').trim(); };
+    const rows=[], links=[];
+    for(let r=startRow+1;r<=range.e.r;r++){ const row={}, link={}; headers.forEach((header,i)=>{ const h=String(header??'').trim(); if(!h) return; const cell=sheet[XLSX.utils.encode_cell({r,c:range.s.c+i})]; row[h]=valueOf(cell); if(h==='Test ID'||h==='Iteration Name'){ const url=linkFromCell(cell); if(url) link[h]=url; } }); if(Object.values(row).some(v=>String(v).trim()!=='')){ rows.push(row); links.push(link); } }
     return { rows, headerRow, links };
   }
   function compare() {
@@ -89,9 +90,10 @@
       return out;
     });
     const matchCount=state.latestRows.filter(row=>oldMap.has(keys.map(k=>compareValue(k,row[k])).join('\u001f'))).length;
+    const linkCount=state.result.reduce((n,row)=>n+Object.keys(row.__links||{}).length,0);
     $('latestCount').textContent=state.latestRows.length.toLocaleString(); $('matchCount').textContent=matchCount.toLocaleString(); $('newCount').textContent=(state.latestRows.length-matchCount).toLocaleString();
     const preview=state.result.slice(0,20); $('tableWrap').innerHTML=preview.length?`<table><thead><tr>${outputHeaders.map(h=>`<th>${escapeHtml(h)}</th>`).join('')}</tr></thead><tbody>${preview.map(r=>`<tr>${outputHeaders.map(h=>`<td title="${escapeHtml(r[h])}">${(h==='Test ID'||h==='Iteration Name') && r.__links?.[h] ? '<a href="'+escapeHtml(r.__links[h])+'" target="_blank" rel="noopener">'+escapeHtml(r[h])+'</a>' : escapeHtml(r[h])}</td>`).join('')}</tr>`).join('')}</tbody></table><div class="hint">預覽前 20 筆；匯出檔固定使用 2547 的欄位順序，並包含全部 ${state.result.length} 筆最新 case。</div>`:'';
-    $('results').classList.remove('hidden'); $('exportBtn').disabled=!state.result.length; status('fileStatus',`完成：已彙整 ${latestData.length} 個新檔案並與 ${oldSheet} 自動比對，沿用 ${matchCount} 筆舊資料；其餘 ${state.latestRows.length-matchCount} 筆以 NA 補齊舊格式欄位。`,'ok');
+    $('results').classList.remove('hidden'); $('exportBtn').disabled=!state.result.length; status('fileStatus',`完成：已彙整 ${latestData.length} 個新檔案並與 ${oldSheet} 自動比對，沿用 ${matchCount} 筆舊資料；其餘 ${state.latestRows.length-matchCount} 筆以 NA 補齊舊格式欄位；已從新檔保留 ${linkCount} 個 Test ID／Iteration Name 超連結。`,'ok');
   }
   function exportXlsx() { const ws=XLSX.utils.json_to_sheet(state.result,{header:outputHeaders}); const idx={}; outputHeaders.forEach((h,i)=>idx[h]=i); state.result.forEach((row,r)=>['Test ID','Iteration Name'].forEach(h=>{ const url=row.__links?.[h]; if(url){ const cell=ws[XLSX.utils.encode_cell({r:r+1,c:idx[h]})]; if(cell){ const label=String(row[h]??'').replace(/"/g,'""'); const target=String(url).replace(/"/g,'""'); cell.f='HYPERLINK("'+target+'","'+label+'")'; cell.v=String(row[h]??''); cell.t='s'; cell.l={Target:url}; } } })); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'2547'); XLSX.writeFile(wb,'case_list_overlapping.xlsx'); }
   ['latestFile','oldFile'].forEach(id=>$(id).addEventListener('change',loadBooks)); $('compareBtn').addEventListener('click',compare); $('exportBtn').addEventListener('click',exportXlsx);
