@@ -114,7 +114,7 @@
       if(!['pass','passed','complete','completed'].includes(result)) item.incomplete+=hours;
       if(!tester||tester==='na') item.unassigned+=hours; summary.set(name,item);
     });
-    const summaryRows=[['Iteration Name','Total Test Hours','Uncompleted Hours','Unassigned Tester Hours'],...Array.from(summary.values()).sort((a,b)=>a.iteration.localeCompare(b.iteration)).map(x=>[x.iteration,Number(x.total.toFixed(2)),Number(x.incomplete.toFixed(2)),Number(x.unassigned.toFixed(2)])];
+    const summaryRows=[['Iteration Name','Total Test Hours','Uncompleted Hours','Unassigned Tester Hours'],...Array.from(summary.values()).sort((a,b)=>a.iteration.localeCompare(b.iteration)).map(x=>[x.iteration,Number(x.total.toFixed(2)),Number(x.incomplete.toFixed(2)),Number(x.unassigned.toFixed(2))])];
     const summaryWs=XLSX.utils.aoa_to_sheet(summaryRows); summaryWs['!cols']=[{wch:42},{wch:18},{wch:20},{wch:25}];
     const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'2547'); XLSX.utils.book_append_sheet(wb,summaryWs,'Iteration Summary'); XLSX.writeFile(wb,'case_list_overlapping.xlsx');
   }
