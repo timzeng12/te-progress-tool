@@ -39,7 +39,7 @@
 (() => {
   const $ = id => document.getElementById(id);
   const outputHeaders = ['Test ID','Iteration Name','Test Case Name','TC ID.Version','Configuration Name','xx','Tester','Result','Group','Week','Test hours','Date','Note','比對狀態'];
-  const carryHeaders = ['Tester','Result','Group','Week','Test hours','Date','Note'];
+  const carryHeaders = ['Group','Week','Test hours','Date','Note'];
   const state = { latestBooks:[], oldBook:null, latestRows:[], oldRows:[], result:[] };
   const norm = v => String(v ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
   const compareValue = (field, value) => field==='TC ID.Version' ? norm(value).split('.')[0] : norm(value);
